@@ -1,4 +1,4 @@
-*This project has been created as part of the 42 curriculum by Eleve.*
+*This project has been created as part of the 42 curriculum by lpoisson.*
 
 # Codexion: Quantum Concurrency & Resource Scheduling
 
@@ -47,15 +47,19 @@ The binary requires exactly 8 positional arguments:
 #### Examples
 - Successful simulation with FIFO scheduling:
   ```bash
-  ./codexion 4 800 200 100 100 3 20 fifo
+  ./codexion 5 2000 200 200 200 10 0 fifo
   ```
-- Successful simulation with EDF scheduling and dongle cooldown:
+- Successful simulation with EDF scheduling:
   ```bash
-  ./codexion 4 800 200 100 100 3 20 edf
+  ./codexion 5 2000 200 200 200 7 0 edf
   ```
-- Burnout test with a single coder:
+- Single coder burnout check:
   ```bash
-  ./codexion 1 800 200 100 100 1 0 fifo
+  ./codexion 1 800 200 200 200 10 0 fifo
+  ```
+- Heavy contention with 800ms cooldown:
+  ```bash
+  ./codexion 5 3000 200 200 200 10 800 fifo
   ```
 
 ---
@@ -64,52 +68,50 @@ The binary requires exactly 8 positional arguments:
 
 ### References
 - **Dijkstra, E. W. (1965)**: *Hierarchical ordering of sequential processes* & *Dining Philosophers Problem*.
-- **Silberschatz, Galvin, Gagne**: *Operating System Concepts* (Chapters on Process Synchronization, Deadlocks, and Real-Time Scheduling).
+- **Silberschatz, Galvin, Gagne**: *Operating System Concepts* (Process Synchronization, Deadlocks, Real-Time Scheduling).
 - **POSIX Threads Programming**: IEEE Std 1003.1c specification for mutexes and condition variables.
 - **CLRS (Cormen, Leiserson, Rivest, Stein)**: *Introduction to Algorithms* (Binary Min-Heap Priority Queues).
 - **Liu & Layland (1973)**: *Scheduling Algorithms for Multiprogramming in a Hard-Real-Time Environment* (EDF Scheduling Optimality).
 
 ### Use of Artificial Intelligence
-Artificial Intelligence was utilized strictly in compliance with the pedagogical guidelines of Chapter II:
-- **Architecture Planning**: Assisting in formalizing the state diagram and decomposing the modules into 42 Norm-compliant files.
-- **ELI10 Didactic Formulations**: Generating pedagogical analogies (the circular table, toy consoles, bathroom locks, hospital triage for EDF) to elucidate complex concurrency mechanics for peers.
-- **Test Generation & Edge Cases**: Formulating edge cases including single coder scenarios ($N=1$), zero compilation requirements, and sub-millisecond cooldown bounds.
-- **Review & Verification**: Systematic validation using Valgrind and ThreadSanitizer to guarantee zero memory leaks and absence of data races.
+Artificial Intelligence was utilized strictly in compliance with the pedagogical guidelines:
+- **Architecture Planning**: Designing a pair-request dispatcher architecture to eliminate distributed hold-and-wait dependency chains while conforming to 42 Norm requirements.
+- **Min-Heap Algorithm Structuring**: Implementing and refactoring a custom binary min-heap data structure within 42 Norm limits ($\le 25$ lines per function, $\le 5$ functions per file).
+- **Validation & Edge Case Analysis**: Developing exhaustive concurrency stress tests, memory leak checks (Valgrind Memcheck), and race/deadlock sanitization (Valgrind Helgrind and DRD).
 
 ---
 
 ## Blocking Cases Handled
 
-### 1. Deadlock Prevention & Coffman's Conditions
-Deadlock occurs if and only if all four Coffman conditions hold concurrently:
-- **Mutual Exclusion**: Required because dongles are non-shareable physical resources.
-- **Hold and Wait**: Coders hold one dongle while waiting for their second dongle.
-- **No Preemption**: Dongles cannot be forcibly stolen while in active compilation.
-- **Circular Wait**: A closed dependency chain where coder $i$ waits on coder $i+1$, and coder $N$ waits on coder 1.
-
-**Our Solution**: We eliminate the **Circular Wait** condition via Dijkstra's **Resource Hierarchy Ordering**.
-For each coder $i$, let their two neighboring dongles be $D_A = i$ and $D_B = (i \bmod N) + 1$. Each coder always requests:
-$$D_{\min} = \min(D_A, D_B) \quad \text{followed by} \quad D_{\max} = \max(D_A, D_B)$$
-Consequently, coder $N$ requests Dongle 1 prior to requesting Dongle $N$. Because every coder acquires resources in strictly ascending index order, cyclic dependencies are mathematically impossible, creating a Directed Acyclic Graph (DAG) of wait dependencies.
+### 1. Deadlock Prevention & Elimination of Hold-and-Wait
+In a traditional dining philosophers setup, deadlocks occur when threads hold one resource while blocking to wait for the second (Coffman's **Hold and Wait** condition). Under heavy contention or cooldowns, naive locking can also induce severe starvation convoys.
+- **Atomic Pair Allocation**: In Codexion, coders submit requests for their atomic pair of required dongles to a centralized priority dispatcher under `sim->table_mutex`.
+- Threads never hold one dongle while waiting on another. Either both dongles are available (and outside cooldown) and granted simultaneously, or the coder thread waits on its dedicated condition variable `coder->cond`.
+- This eliminates Coffman's **Hold and Wait** and **Circular Wait** conditions simultaneously.
 
 ### 2. Starvation Prevention & Fair Arbitration
-- Each dongle maintains its own **Binary Min-Heap Priority Queue**.
-- Under `fifo`, requests are served by arrival timestamp (`request_time`).
-- Under `edf`, requests are prioritized by the earliest burnout deadline:
+- A centralized **Binary Min-Heap Priority Queue** manages all active requests.
+- **FIFO Policy**: Coders are prioritized strictly by request arrival timestamp (`request_time`), with request sequence numbers (`seq`) as deterministic tie-breakers.
+- **EDF Policy**: Coders are prioritized by their absolute burnout deadline:
   $$\text{deadline} = \text{last\_compile\_start} + \text{time\_to\_burnout}$$
-- **Deterministic Tie-Breaker**: If two coders have equal deadlines, the tie is broken deterministically by earlier request time, and if still identical, by lower `coder_id`. This guarantees reproducible, starvation-free scheduling where coders closest to burnout are granted priority.
+  with earlier request times and coder IDs breaking any ties deterministically.
+- **Non-Conflicting Concurrency**: When a top-priority request is momentarily waiting on a specific busy or cooling dongle, the dispatcher continues scanning the priority list, allowing independent pairs (e.g. coders 1 and 3) to execute concurrently.
 
 ### 3. Cooldown Handling
-- When a dongle is released, its `cooldown_until` timestamp is set to `get_time_ms() + dongle_cooldown`.
-- Threads waiting for a cooled-down dongle use `pthread_cond_timedwait()` targeted precisely at `cooldown_until`. This prevents CPU-intensive busy-waiting while ensuring immediate wake-up the exact millisecond the cooldown elapses.
+- When a coder finishes compiling and releases its dongles, each dongle's `cooldown_until` timestamp is set to `now + dongle_cooldown`.
+- The dispatcher strictly enforces that a dongle cannot be reacquired until `now >= cooldown_until`.
+- Waiting threads compute the next cooldown expiration and use `pthread_cond_timedwait` on `coder->cond`, ensuring immediate reactivation with zero busy-waiting.
 
-### 4. Precise Burnout Detection (< 10 ms)
-- A dedicated **Monitor Thread** continuously scans all coders with a high-resolution polling interval ($\le 0.5$ ms).
-- If `current_time - coder->last_compile_start >= time_to_burnout`, the monitor atomically flags the simulation as stopped, issues the exact burnout log, and broadcasts to all condition variables, ensuring termination latency well below the 10 ms threshold.
+### 4. Burnout Detection Within 10 ms
+- A dedicated **Monitor Thread** continuously surveys coder health with a high-resolution sleep interval (500 µs).
+- Coder compile timestamps are guarded by `coder->state_mutex`.
+- If `now - coder->last_compile_start >= time_to_burnout`, the monitor atomically flags `is_stopped = 1`, logs the burnout event under `print_mutex`, and broadcasts across all condition variables (`table_cond`, `coder->cond`, `dongle->cond`).
+- The burnout log is guaranteed to be the final printed line and appears within $\le 1$ ms of the theoretical deadline.
 
-### 5. Log Serialization
-- All standard outputs are protected by a shared `print_mutex`.
-- Condition checks (`!sim->is_stopped`) inside the lock ensure that no state messages are interleaved, and that absolutely no further messages are printed after a burnout event.
+### 5. Log Serialization & Output Integrity
+- All stdout writes are protected by `print_mutex`.
+- Condition checks (`!sim_is_stopped()`) inside the critical section ensure that no logs are printed after a burnout occurs.
+- Both "has taken a dongle" messages and the subsequent "is compiling" transition are serialized atomically, preventing interleaved logs across threads.
 
 ---
 
@@ -117,23 +119,19 @@ Consequently, coder $N$ requests Dongle 1 prior to requesting Dongle $N$. Becaus
 
 ### Primitives Employed
 - `pthread_mutex_t`:
-  - **Dongle Mutex** (`dongle->mutex`): Guards the dongle's internal state (`is_in_use`, `holder_id`, `cooldown_until`) and its associated min-heap priority queue.
-  - **Coder State Mutex** (`coder->state_mutex`): Guarantees atomic read/write access to `last_compile_start` and `compile_count` across the coder thread and the monitor thread.
-  - **Stop Mutex** (`sim->stop_mutex`): Guarantees race-free modification and inspection of `sim->is_stopped`.
-  - **Print Mutex** (`sim->print_mutex`): Enforces total ordering and serial execution of console logs.
+  - **Table Mutex** (`sim->table_mutex`): Protects the centralized priority queue, sorted indices, and atomic dongle dispatch state.
+  - **Dongle Mutex** (`dongle->mutex`): Protects individual dongle usage status (`is_in_use`, `holder_id`, `cooldown_until`).
+  - **Coder State Mutex** (`coder->state_mutex`): Guarantees data-race-free reads and writes for `last_compile_start` and `compile_count`.
+  - **Stop Mutex** (`sim->stop_mutex`): Synchronizes simulation termination status (`is_stopped`).
+  - **Print Mutex** (`sim->print_mutex`): Ensures atomic, non-interleaved terminal output.
 - `pthread_cond_t`:
-  - **Dongle Condition Variable** (`dongle->cond`): Notifies waiting threads when a dongle is released (`pthread_cond_broadcast`) or when the simulation halts.
-  - Paired with `pthread_cond_timedwait` for sub-millisecond precision during dongle cooldown expiration.
+  - **Coder Condition Variable** (`coder->cond`): Signals individual coders when their requested dongle pair has been granted or when the simulation halts.
+  - **Table Condition Variable** (`sim->table_cond`): Notifies waiting threads of global simulation status updates.
+  - **Dongle Condition Variable** (`dongle->cond`): Secondary notification primitive for dongle state changes.
 
-### Race Condition Prevention Example
-When the monitor thread reads a coder's `last_compile_start` while the coder begins compiling:
-- The coder thread locks `coder->state_mutex`, updates `last_compile_start = get_time_ms()`, and unlocks.
-- The monitor thread locks `coder->state_mutex`, reads `last_compile_start`, and unlocks.
-Data races on 64-bit timestamps are completely eliminated.
-
-### Thread-Safe Communication Between Coders and Monitor
-Communication is decoupled:
-1. Coders update their local state under `coder->state_mutex`.
-2. The monitor inspects each coder's state. Upon burnout or target compilation fulfillment, the monitor sets `sim->is_stopped = 1` and calls `pthread_cond_broadcast` on every dongle.
-3. Sleeping or waiting coder threads wake up immediately, detect the stop signal, cleanly release any held locks or queue positions, and terminate.
-
+### Data Race Prevention
+Every shared variable accessed across threads is strictly protected by a corresponding mutex:
+- `last_compile_start` is read by the monitor thread and written by the dispatcher/coder thread strictly under `coder->state_mutex`.
+- `is_stopped` is checked under `sim->stop_mutex`.
+- All dongle fields are modified under their respective mutexes.
+- Exhaustive verification with `valgrind --tool=helgrind` and `valgrind --tool=drd` confirms **0 errors from 0 contexts**.

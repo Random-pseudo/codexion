@@ -1,3 +1,15 @@
+/* ************************************************************************** */
+/*                                                                            */
+/*                                                        :::      ::::::::   */
+/*   coder.c                                            :+:      :+:    :+:   */
+/*                                                    +:+ +:+         +:+     */
+/*   By: lpoisson <lpoisson@student.42.fr>          +#+  +:+       +#+        */
+/*                                                +#+#+#+#+#+   +#+           */
+/*   Created: 2026/10/06 12:00:00 by lpoisson          #+#    #+#             */
+/*   Updated: 2026/10/06 12:00:00 by lpoisson         ###   ########.fr       */
+/*                                                                            */
+/* ************************************************************************** */
+
 #include "codexion.h"
 
 void	print_log(t_coder *coder, const char *msg)
@@ -13,37 +25,52 @@ void	print_log(t_coder *coder, const char *msg)
 	pthread_mutex_unlock(&coder->sim->print_mutex);
 }
 
-static void	handle_single_coder(t_coder *coder)
+static void	print_compile_start(t_coder *coder)
 {
-	if (dongle_take(coder->first_dongle, coder) != 0)
-		return ;
+	long long	ts_log;
+
+	pthread_mutex_lock(&coder->sim->print_mutex);
+	if (!sim_is_stopped(coder->sim))
+	{
+		ts_log = get_time_ms() - coder->sim->start_time_ms;
+		printf("%lld %d has taken a dongle\n", ts_log, coder->id);
+		printf("%lld %d has taken a dongle\n", ts_log, coder->id);
+		printf("%lld %d is compiling\n", ts_log, coder->id);
+	}
+	pthread_mutex_unlock(&coder->sim->print_mutex);
+}
+
+int	handle_single_coder(t_coder *coder)
+{
+	pthread_mutex_lock(&coder->first_dongle->mutex);
+	if (sim_is_stopped(coder->sim))
+	{
+		pthread_mutex_unlock(&coder->first_dongle->mutex);
+		return (1);
+	}
+	coder->first_dongle->is_in_use = 1;
+	coder->first_dongle->holder_id = coder->id;
+	pthread_mutex_unlock(&coder->first_dongle->mutex);
+	print_log(coder, "has taken a dongle");
 	while (!sim_is_stopped(coder->sim))
 		usleep(1000);
-	dongle_release(coder->first_dongle, coder);
+	pthread_mutex_lock(&coder->first_dongle->mutex);
+	coder->first_dongle->is_in_use = 0;
+	coder->first_dongle->holder_id = 0;
+	pthread_mutex_unlock(&coder->first_dongle->mutex);
+	return (1);
 }
 
 static int	perform_compilation(t_coder *coder)
 {
-	if (dongle_take(coder->first_dongle, coder) != 0)
+	if (acquire_dongles(coder) != 0)
 		return (1);
-	if (!coder->second_dongle)
-	{
-		handle_single_coder(coder);
-		return (1);
-	}
-	if (dongle_take(coder->second_dongle, coder) != 0)
-	{
-		dongle_release(coder->first_dongle, coder);
-		return (1);
-	}
+	print_compile_start(coder);
+	precise_sleep(coder->sim->time_to_compile, coder->sim);
+	release_dongles(coder);
 	pthread_mutex_lock(&coder->state_mutex);
-	coder->last_compile_start = get_time_ms();
 	coder->compile_count++;
 	pthread_mutex_unlock(&coder->state_mutex);
-	print_log(coder, "is compiling");
-	precise_sleep(coder->sim->time_to_compile, coder->sim);
-	dongle_release(coder->second_dongle, coder);
-	dongle_release(coder->first_dongle, coder);
 	return (0);
 }
 
@@ -52,8 +79,6 @@ void	*coder_routine(void *arg)
 	t_coder	*coder;
 
 	coder = (t_coder *)arg;
-	if (coder->sim->num_coders > 1 && coder->id % 2 == 0)
-		usleep(1000);
 	while (!sim_is_stopped(coder->sim))
 	{
 		if (perform_compilation(coder) != 0)

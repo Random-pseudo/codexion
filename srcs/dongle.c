@@ -1,100 +1,115 @@
+/* ************************************************************************** */
+/*                                                                            */
+/*                                                        :::      ::::::::   */
+/*   dongle.c                                           :+:      :+:    :+:   */
+/*                                                    +:+ +:+         +:+     */
+/*   By: lpoisson <lpoisson@student.42.fr>          +#+  +:+       +#+        */
+/*                                                +#+#+#+#+#+   +#+           */
+/*   Created: 2026/10/06 12:00:00 by lpoisson          #+#    #+#             */
+/*   Updated: 2026/10/06 12:00:00 by lpoisson         ###   ########.fr       */
+/*                                                                            */
+/* ************************************************************************** */
+
 #include "codexion.h"
 
-int	dongle_init(t_dongle *dongle, int id, int num_coders, int policy)
+static long long	find_cooldown_wake(t_sim *sim, long long now)
 {
-	dongle->id = id;
-	dongle->is_in_use = 0;
-	dongle->holder_id = 0;
-	dongle->cooldown_until = 0;
-	dongle->seq_counter = 0;
-	if (pthread_mutex_init(&dongle->mutex, NULL) != 0)
-		return (1);
-	if (pthread_cond_init(&dongle->cond, NULL) != 0)
+	long long	wake_ms;
+	int			i;
+
+	wake_ms = 0;
+	i = 0;
+	while (i < sim->num_coders)
 	{
-		pthread_mutex_destroy(&dongle->mutex);
-		return (1);
+		if (sim->dongles[i].cooldown_until > now)
+		{
+			if (wake_ms == 0 || sim->dongles[i].cooldown_until < wake_ms)
+				wake_ms = sim->dongles[i].cooldown_until;
+		}
+		i++;
 	}
-	if (pqueue_init(&dongle->queue, num_coders + 4, policy) != 0)
-	{
-		pthread_mutex_destroy(&dongle->mutex);
-		pthread_cond_destroy(&dongle->cond);
-		return (1);
-	}
-	return (0);
+	return (wake_ms);
 }
 
-void	dongle_destroy(t_dongle *dongle)
+static void	wait_for_dongles(t_coder *coder, t_sim *sim)
 {
-	pthread_mutex_destroy(&dongle->mutex);
-	pthread_cond_destroy(&dongle->cond);
-	pqueue_destroy(&dongle->queue);
-}
-
-static int	wait_for_dongle(t_dongle *dongle, t_coder *coder)
-{
-	t_request		top;
 	long long		now;
+	long long		wake_ms;
 	struct timespec	ts;
 
-	while (!sim_is_stopped(coder->sim))
+	while (!coder->is_granted && !sim_is_stopped(sim))
 	{
-		pqueue_peek(&dongle->queue, &top);
 		now = get_time_ms();
-		if (top.coder_id == coder->id && !dongle->is_in_use
-			&& now >= dongle->cooldown_until)
+		wake_ms = find_cooldown_wake(sim, now);
+		if (wake_ms > now)
 		{
-			pqueue_pop(&dongle->queue);
-			dongle->is_in_use = 1;
-			dongle->holder_id = coder->id;
-			return (0);
+			ms_to_timespec(wake_ms, &ts);
+			pthread_cond_timedwait(&coder->cond, &sim->table_mutex, &ts);
 		}
-		if (dongle->is_in_use || top.coder_id != coder->id)
-			pthread_cond_wait(&dongle->cond, &dongle->mutex);
 		else
-		{
-			ms_to_timespec(dongle->cooldown_until, &ts);
-			pthread_cond_timedwait(&dongle->cond, &dongle->mutex, &ts);
-		}
+			pthread_cond_wait(&coder->cond, &sim->table_mutex);
+		dispatch(sim);
 	}
-	return (1);
 }
 
-int	dongle_take(t_dongle *dongle, t_coder *coder)
+static t_request	create_request(t_coder *coder)
 {
 	t_request	req;
-	int			ret;
 
-	pthread_mutex_lock(&dongle->mutex);
-	if (sim_is_stopped(coder->sim))
-	{
-		pthread_mutex_unlock(&dongle->mutex);
-		return (1);
-	}
 	req.coder_id = coder->id;
 	req.request_time = get_time_ms();
 	pthread_mutex_lock(&coder->state_mutex);
 	req.deadline = coder->last_compile_start + coder->sim->time_to_burnout;
 	pthread_mutex_unlock(&coder->state_mutex);
-	req.seq = ++dongle->seq_counter;
-	pqueue_push(&dongle->queue, req);
-	ret = wait_for_dongle(dongle, coder);
-	if (ret != 0)
-		pqueue_remove_by_id(&dongle->queue, coder->id);
-	pthread_mutex_unlock(&dongle->mutex);
-	if (ret == 0)
-		print_log(coder, "has taken a dongle");
-	return (ret);
+	req.seq = ++coder->sim->seq_counter;
+	return (req);
 }
 
-void	dongle_release(t_dongle *dongle, t_coder *coder)
+int	acquire_dongles(t_coder *coder)
 {
-	pthread_mutex_lock(&dongle->mutex);
-	if (dongle->holder_id == coder->id)
+	t_sim		*sim;
+	t_request	req;
+
+	sim = coder->sim;
+	if (!coder->second_dongle)
+		return (handle_single_coder(coder));
+	pthread_mutex_lock(&sim->table_mutex);
+	if (sim_is_stopped(sim))
 	{
-		dongle->is_in_use = 0;
-		dongle->holder_id = 0;
-		dongle->cooldown_until = get_time_ms() + coder->sim->dongle_cooldown;
-		pthread_cond_broadcast(&dongle->cond);
+		pthread_mutex_unlock(&sim->table_mutex);
+		return (1);
 	}
-	pthread_mutex_unlock(&dongle->mutex);
+	req = create_request(coder);
+	coder->is_granted = 0;
+	pqueue_push(&sim->queue, req);
+	dispatch(sim);
+	wait_for_dongles(coder, sim);
+	if (!coder->is_granted)
+		pqueue_remove_by_id(&sim->queue, coder->id);
+	pthread_mutex_unlock(&sim->table_mutex);
+	return (!coder->is_granted);
+}
+
+void	release_dongles(t_coder *coder)
+{
+	t_sim		*sim;
+	long long	now;
+
+	sim = coder->sim;
+	if (!coder->second_dongle)
+		return ;
+	now = get_time_ms();
+	pthread_mutex_lock(&sim->table_mutex);
+	pthread_mutex_lock(&coder->first_dongle->mutex);
+	coder->first_dongle->is_in_use = 0;
+	coder->first_dongle->holder_id = 0;
+	coder->first_dongle->cooldown_until = now + sim->dongle_cooldown;
+	pthread_mutex_unlock(&coder->first_dongle->mutex);
+	pthread_mutex_lock(&coder->second_dongle->mutex);
+	coder->second_dongle->is_in_use = 0;
+	coder->second_dongle->holder_id = 0;
+	coder->second_dongle->cooldown_until = now + sim->dongle_cooldown;
+	pthread_mutex_unlock(&coder->second_dongle->mutex);
+	dispatch(sim);
+	pthread_mutex_unlock(&sim->table_mutex);
 }

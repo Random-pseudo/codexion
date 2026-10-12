@@ -12,8 +12,10 @@ SRCS		= $(SRCS_DIR)/main.c \
 			  $(SRCS_DIR)/pqueue.c \
 			  $(SRCS_DIR)/pqueue_ops.c \
 			  $(SRCS_DIR)/dongle.c \
+			  $(SRCS_DIR)/dongle_ops.c \
 			  $(SRCS_DIR)/coder.c \
 			  $(SRCS_DIR)/monitor.c \
+			  $(SRCS_DIR)/init.c \
 			  $(SRCS_DIR)/cleanup.c
 
 OBJS		= $(SRCS:$(SRCS_DIR)/%.c=$(OBJS_DIR)/%.o)

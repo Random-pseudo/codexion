@@ -1,6 +1,18 @@
+/* ************************************************************************** */
+/*                                                                            */
+/*                                                        :::      ::::::::   */
+/*   pqueue_ops.c                                       :+:      :+:    :+:   */
+/*                                                    +:+ +:+         +:+     */
+/*   By: lpoisson <lpoisson@student.42.fr>          +#+  +:+       +#+        */
+/*                                                +#+#+#+#+#+   +#+           */
+/*   Created: 2026/10/06 12:00:00 by lpoisson          #+#    #+#             */
+/*   Updated: 2026/10/06 12:00:00 by lpoisson         ###   ########.fr       */
+/*                                                                            */
+/* ************************************************************************** */
+
 #include "codexion.h"
 
-static void	sift_down(t_pqueue *pq, int i)
+void	sift_down(t_pqueue *pq, int i)
 {
 	int			smallest;
 	int			left;
@@ -27,7 +39,7 @@ static void	sift_down(t_pqueue *pq, int i)
 	}
 }
 
-static void	sift_up(t_pqueue *pq, int i)
+void	sift_up(t_pqueue *pq, int i)
 {
 	int			parent;
 	t_request	tmp;
@@ -58,6 +70,19 @@ int	pqueue_pop(t_pqueue *pq)
 	return (0);
 }
 
+void	pqueue_remove_at(t_pqueue *pq, int idx)
+{
+	if (idx < 0 || idx >= pq->size)
+		return ;
+	pq->data[idx] = pq->data[pq->size - 1];
+	pq->size--;
+	if (idx < pq->size)
+	{
+		sift_down(pq, idx);
+		sift_up(pq, idx);
+	}
+}
+
 void	pqueue_remove_by_id(t_pqueue *pq, int coder_id)
 {
 	int	i;
@@ -67,13 +92,7 @@ void	pqueue_remove_by_id(t_pqueue *pq, int coder_id)
 	{
 		if (pq->data[i].coder_id == coder_id)
 		{
-			pq->data[i] = pq->data[pq->size - 1];
-			pq->size--;
-			if (i < pq->size)
-			{
-				sift_down(pq, i);
-				sift_up(pq, i);
-			}
+			pqueue_remove_at(pq, i);
 			return ;
 		}
 		i++;

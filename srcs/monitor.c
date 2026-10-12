@@ -1,3 +1,15 @@
+/* ************************************************************************** */
+/*                                                                            */
+/*                                                        :::      ::::::::   */
+/*   monitor.c                                          :+:      :+:    :+:   */
+/*                                                    +:+ +:+         +:+     */
+/*   By: lpoisson <lpoisson@student.42.fr>          +#+  +:+       +#+        */
+/*                                                +#+#+#+#+#+   +#+           */
+/*   Created: 2026/10/06 12:00:00 by lpoisson          #+#    #+#             */
+/*   Updated: 2026/10/06 12:00:00 by lpoisson         ###   ########.fr       */
+/*                                                                            */
+/* ************************************************************************** */
+
 #include "codexion.h"
 
 int	sim_is_stopped(t_sim *sim)
@@ -17,14 +29,18 @@ void	sim_stop_and_broadcast(t_sim *sim)
 	pthread_mutex_lock(&sim->stop_mutex);
 	sim->is_stopped = 1;
 	pthread_mutex_unlock(&sim->stop_mutex);
+	pthread_mutex_lock(&sim->table_mutex);
+	pthread_cond_broadcast(&sim->table_cond);
 	i = 0;
 	while (i < sim->num_coders)
 	{
+		pthread_cond_broadcast(&sim->coders[i].cond);
 		pthread_mutex_lock(&sim->dongles[i].mutex);
 		pthread_cond_broadcast(&sim->dongles[i].cond);
 		pthread_mutex_unlock(&sim->dongles[i].mutex);
 		i++;
 	}
+	pthread_mutex_unlock(&sim->table_mutex);
 }
 
 static int	check_burnout(t_sim *sim, t_coder *coder, long long now)
@@ -74,13 +90,16 @@ static int	check_all_compiled(t_sim *sim)
 void	*monitor_routine(void *arg)
 {
 	t_sim		*sim;
-	int			i;
 	long long	now;
+	int			i;
 
 	sim = (t_sim *)arg;
 	while (!sim_is_stopped(sim))
 	{
 		now = get_time_ms();
+		pthread_mutex_lock(&sim->table_mutex);
+		dispatch(sim);
+		pthread_mutex_unlock(&sim->table_mutex);
 		i = 0;
 		while (i < sim->num_coders)
 		{

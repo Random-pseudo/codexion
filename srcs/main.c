@@ -1,56 +1,16 @@
+/* ************************************************************************** */
+/*                                                                            */
+/*                                                        :::      ::::::::   */
+/*   main.c                                             :+:      :+:    :+:   */
+/*                                                    +:+ +:+         +:+     */
+/*   By: lpoisson <lpoisson@student.42.fr>          +#+  +:+       +#+        */
+/*                                                +#+#+#+#+#+   +#+           */
+/*   Created: 2026/10/06 12:00:00 by lpoisson          #+#    #+#             */
+/*   Updated: 2026/10/06 12:00:00 by lpoisson         ###   ########.fr       */
+/*                                                                            */
+/* ************************************************************************** */
+
 #include "codexion.h"
-
-static int	init_coders(t_sim *sim)
-{
-	int	i;
-	int	d1;
-	int	d2;
-
-	i = 0;
-	while (i < sim->num_coders)
-	{
-		sim->coders[i].id = i + 1;
-		sim->coders[i].sim = sim;
-		sim->coders[i].compile_count = 0;
-		if (pthread_mutex_init(&sim->coders[i].state_mutex, NULL) != 0)
-			return (1);
-		d1 = i;
-		d2 = (i + 1) % sim->num_coders;
-		if (sim->num_coders == 1 || d1 < d2)
-			sim->coders[i].first_dongle = &sim->dongles[d1 < d2 ? d1 : 0];
-		else
-			sim->coders[i].first_dongle = &sim->dongles[d2];
-		if (sim->num_coders == 1)
-			sim->coders[i].second_dongle = NULL;
-		else
-			sim->coders[i].second_dongle = &sim->dongles[d1 < d2 ? d2 : d1];
-		i++;
-	}
-	return (0);
-}
-
-static int	init_sim(t_sim *sim)
-{
-	int	i;
-
-	sim->dongles = malloc(sizeof(t_dongle) * sim->num_coders);
-	sim->coders = malloc(sizeof(t_coder) * sim->num_coders);
-	if (!sim->dongles || !sim->coders)
-		return (1);
-	if (pthread_mutex_init(&sim->stop_mutex, NULL) != 0)
-		return (1);
-	if (pthread_mutex_init(&sim->print_mutex, NULL) != 0)
-		return (1);
-	i = 0;
-	while (i < sim->num_coders)
-	{
-		if (dongle_init(&sim->dongles[i], i + 1,
-				sim->num_coders, sim->scheduler_type) != 0)
-			return (1);
-		i++;
-	}
-	return (init_coders(sim));
-}
 
 static int	start_sim(t_sim *sim)
 {

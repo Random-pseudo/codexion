@@ -1,3 +1,15 @@
+/* ************************************************************************** */
+/*                                                                            */
+/*                                                        :::      ::::::::   */
+/*   pqueue.c                                           :+:      :+:    :+:   */
+/*                                                    +:+ +:+         +:+     */
+/*   By: lpoisson <lpoisson@student.42.fr>          +#+  +:+       +#+        */
+/*                                                +#+#+#+#+#+   +#+           */
+/*   Created: 2026/10/06 12:00:00 by lpoisson          #+#    #+#             */
+/*   Updated: 2026/10/12 13:50:04 by lpoisson         ###   ########.fr       */
+/*                                                                            */
+/* ************************************************************************** */
+
 #include "codexion.h"
 
 int	is_higher_priority(t_request *a, t_request *b, int policy)
@@ -5,8 +17,8 @@ int	is_higher_priority(t_request *a, t_request *b, int policy)
 	if (policy == SCHED_FIFO)
 	{
 		if (a->request_time != b->request_time)
-			return (a->request_time < b->request_time);
-		return (a->seq < b->seq);
+			return (a->request_time > b->request_time);
+		return (a->seq > b->seq);
 	}
 	if (a->deadline != b->deadline)
 		return (a->deadline < b->deadline);

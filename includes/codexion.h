@@ -1,3 +1,15 @@
+/* ************************************************************************** */
+/*                                                                            */
+/*                                                        :::      ::::::::   */
+/*   codexion.h                                         :+:      :+:    :+:   */
+/*                                                    +:+ +:+         +:+     */
+/*   By: lpoisson <lpoisson@student.42.fr>          +#+  +:+       +#+        */
+/*                                                +#+#+#+#+#+   +#+           */
+/*   Created: 2026/10/06 12:00:00 by lpoisson          #+#    #+#             */
+/*   Updated: 2026/10/06 12:00:00 by lpoisson         ###   ########.fr       */
+/*                                                                            */
+/* ************************************************************************** */
+
 #ifndef CODEXION_H
 # define CODEXION_H
 
@@ -37,8 +49,6 @@ typedef struct s_dongle
 	int				is_in_use;
 	int				holder_id;
 	long long		cooldown_until;
-	long long		seq_counter;
-	t_pqueue		queue;
 }	t_dongle;
 
 typedef struct s_coder
@@ -49,6 +59,8 @@ typedef struct s_coder
 	t_dongle		*second_dongle;
 	long long		last_compile_start;
 	int				compile_count;
+	int				is_granted;
+	pthread_cond_t	cond;
 	pthread_mutex_t	state_mutex;
 	t_sim			*sim;
 }	t_coder;
@@ -65,10 +77,15 @@ struct s_sim
 	int				scheduler_type;
 	long long		start_time_ms;
 	int				is_stopped;
+	long long		seq_counter;
 	pthread_mutex_t	stop_mutex;
 	pthread_mutex_t	print_mutex;
+	pthread_mutex_t	table_mutex;
+	pthread_cond_t	table_cond;
+	t_pqueue		queue;
 	t_dongle		*dongles;
 	t_coder			*coders;
+	int				*sorted_indices;
 	pthread_t		monitor_thread;
 };
 
@@ -84,27 +101,33 @@ void		ms_to_timespec(long long target_ms, struct timespec *ts);
 int			is_higher_priority(t_request *a, t_request *b, int policy);
 int			pqueue_init(t_pqueue *pq, int capacity, int policy);
 void		pqueue_destroy(t_pqueue *pq);
-int			pqueue_push(t_pqueue *pq, t_request req);
 int			pqueue_peek(t_pqueue *pq, t_request *out);
+int			pqueue_push(t_pqueue *pq, t_request req);
 
 /* pqueue_ops.c */
+void		sift_down(t_pqueue *pq, int i);
+void		sift_up(t_pqueue *pq, int i);
 int			pqueue_pop(t_pqueue *pq);
+void		pqueue_remove_at(t_pqueue *pq, int idx);
 void		pqueue_remove_by_id(t_pqueue *pq, int coder_id);
 
 /* dongle.c */
-int			dongle_init(t_dongle *dongle, int id, int num_coders, int policy);
-void		dongle_destroy(t_dongle *dongle);
-int			dongle_take(t_dongle *dongle, t_coder *coder);
-void		dongle_release(t_dongle *dongle, t_coder *coder);
+void		dispatch(t_sim *sim);
+int			acquire_dongles(t_coder *coder);
+void		release_dongles(t_coder *coder);
 
 /* coder.c */
-void		*coder_routine(void *arg);
 void		print_log(t_coder *coder, const char *msg);
+int			handle_single_coder(t_coder *coder);
+void		*coder_routine(void *arg);
 
 /* monitor.c */
-void		*monitor_routine(void *arg);
 int			sim_is_stopped(t_sim *sim);
 void		sim_stop_and_broadcast(t_sim *sim);
+void		*monitor_routine(void *arg);
+
+/* init.c */
+int			init_sim(t_sim *sim);
 
 /* cleanup.c */
 void		cleanup_sim(t_sim *sim);
