@@ -49,14 +49,12 @@ int	handle_single_coder(t_coder *coder)
 		return (1);
 	}
 	coder->first_dongle->is_in_use = 1;
-	coder->first_dongle->holder_id = coder->id;
 	pthread_mutex_unlock(&coder->first_dongle->mutex);
 	print_log(coder, "has taken a dongle");
 	while (!sim_is_stopped(coder->sim))
 		usleep(1000);
 	pthread_mutex_lock(&coder->first_dongle->mutex);
 	coder->first_dongle->is_in_use = 0;
-	coder->first_dongle->holder_id = 0;
 	pthread_mutex_unlock(&coder->first_dongle->mutex);
 	return (1);
 }

@@ -22,7 +22,6 @@ static void	cleanup_dongles(t_sim *sim)
 	while (i < sim->num_coders)
 	{
 		pthread_mutex_destroy(&sim->dongles[i].mutex);
-		pthread_cond_destroy(&sim->dongles[i].cond);
 		i++;
 	}
 	free(sim->dongles);
@@ -53,7 +52,6 @@ void	cleanup_sim(t_sim *sim)
 	pthread_mutex_destroy(&sim->stop_mutex);
 	pthread_mutex_destroy(&sim->print_mutex);
 	pthread_mutex_destroy(&sim->table_mutex);
-	pthread_cond_destroy(&sim->table_cond);
 	pqueue_destroy(&sim->queue);
 	if (sim->sorted_indices)
 	{

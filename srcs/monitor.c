@@ -30,14 +30,10 @@ void	sim_stop_and_broadcast(t_sim *sim)
 	sim->is_stopped = 1;
 	pthread_mutex_unlock(&sim->stop_mutex);
 	pthread_mutex_lock(&sim->table_mutex);
-	pthread_cond_broadcast(&sim->table_cond);
 	i = 0;
 	while (i < sim->num_coders)
 	{
 		pthread_cond_broadcast(&sim->coders[i].cond);
-		pthread_mutex_lock(&sim->dongles[i].mutex);
-		pthread_cond_broadcast(&sim->dongles[i].cond);
-		pthread_mutex_unlock(&sim->dongles[i].mutex);
 		i++;
 	}
 	pthread_mutex_unlock(&sim->table_mutex);

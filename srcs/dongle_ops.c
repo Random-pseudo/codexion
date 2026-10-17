@@ -45,11 +45,9 @@ static void	mark_dongles_taken(t_coder *coder, int cid, long long now)
 {
 	pthread_mutex_lock(&coder->first_dongle->mutex);
 	coder->first_dongle->is_in_use = 1;
-	coder->first_dongle->holder_id = cid;
 	pthread_mutex_unlock(&coder->first_dongle->mutex);
 	pthread_mutex_lock(&coder->second_dongle->mutex);
 	coder->second_dongle->is_in_use = 1;
-	coder->second_dongle->holder_id = cid;
 	pthread_mutex_unlock(&coder->second_dongle->mutex);
 	pthread_mutex_lock(&coder->state_mutex);
 	coder->last_compile_start = now;

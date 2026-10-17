@@ -6,7 +6,7 @@
 /*   By: lpoisson <lpoisson@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/10/06 12:00:00 by lpoisson          #+#    #+#             */
-/*   Updated: 2026/10/06 12:00:00 by lpoisson         ###   ########.fr       */
+/*   Updated: 2026/10/12 19:21:44 by lpoisson         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -102,12 +102,10 @@ void	release_dongles(t_coder *coder)
 	pthread_mutex_lock(&sim->table_mutex);
 	pthread_mutex_lock(&coder->first_dongle->mutex);
 	coder->first_dongle->is_in_use = 0;
-	coder->first_dongle->holder_id = 0;
 	coder->first_dongle->cooldown_until = now + sim->dongle_cooldown;
 	pthread_mutex_unlock(&coder->first_dongle->mutex);
 	pthread_mutex_lock(&coder->second_dongle->mutex);
 	coder->second_dongle->is_in_use = 0;
-	coder->second_dongle->holder_id = 0;
 	coder->second_dongle->cooldown_until = now + sim->dongle_cooldown;
 	pthread_mutex_unlock(&coder->second_dongle->mutex);
 	dispatch(sim);

@@ -59,17 +59,6 @@ void	sift_up(t_pqueue *pq, int i)
 	}
 }
 
-int	pqueue_pop(t_pqueue *pq)
-{
-	if (pq->size == 0)
-		return (1);
-	pq->data[0] = pq->data[pq->size - 1];
-	pq->size--;
-	if (pq->size > 0)
-		sift_down(pq, 0);
-	return (0);
-}
-
 void	pqueue_remove_at(t_pqueue *pq, int idx)
 {
 	if (idx < 0 || idx >= pq->size)

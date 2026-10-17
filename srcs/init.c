@@ -19,13 +19,9 @@ static int	init_dongles(t_sim *sim)
 	i = 0;
 	while (i < sim->num_coders)
 	{
-		sim->dongles[i].id = i + 1;
 		sim->dongles[i].is_in_use = 0;
-		sim->dongles[i].holder_id = 0;
 		sim->dongles[i].cooldown_until = 0;
 		if (pthread_mutex_init(&sim->dongles[i].mutex, NULL) != 0)
-			return (1);
-		if (pthread_cond_init(&sim->dongles[i].cond, NULL) != 0)
 			return (1);
 		i++;
 	}
@@ -69,8 +65,6 @@ int	init_sim(t_sim *sim)
 	if (pthread_mutex_init(&sim->print_mutex, NULL) != 0)
 		return (1);
 	if (pthread_mutex_init(&sim->table_mutex, NULL) != 0)
-		return (1);
-	if (pthread_cond_init(&sim->table_cond, NULL) != 0)
 		return (1);
 	if (pqueue_init(&sim->queue, sim->num_coders + 16,
 			sim->scheduler_type) != 0)

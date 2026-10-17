@@ -43,11 +43,8 @@ typedef struct s_pqueue
 
 typedef struct s_dongle
 {
-	int				id;
 	pthread_mutex_t	mutex;
-	pthread_cond_t	cond;
 	int				is_in_use;
-	int				holder_id;
 	long long		cooldown_until;
 }	t_dongle;
 
@@ -81,7 +78,6 @@ struct s_sim
 	pthread_mutex_t	stop_mutex;
 	pthread_mutex_t	print_mutex;
 	pthread_mutex_t	table_mutex;
-	pthread_cond_t	table_cond;
 	t_pqueue		queue;
 	t_dongle		*dongles;
 	t_coder			*coders;
@@ -101,13 +97,11 @@ void		ms_to_timespec(long long target_ms, struct timespec *ts);
 int			is_higher_priority(t_request *a, t_request *b, int policy);
 int			pqueue_init(t_pqueue *pq, int capacity, int policy);
 void		pqueue_destroy(t_pqueue *pq);
-int			pqueue_peek(t_pqueue *pq, t_request *out);
 int			pqueue_push(t_pqueue *pq, t_request req);
 
 /* pqueue_ops.c */
 void		sift_down(t_pqueue *pq, int i);
 void		sift_up(t_pqueue *pq, int i);
-int			pqueue_pop(t_pqueue *pq);
 void		pqueue_remove_at(t_pqueue *pq, int idx);
 void		pqueue_remove_by_id(t_pqueue *pq, int coder_id);
 

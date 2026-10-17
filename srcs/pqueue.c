@@ -6,7 +6,7 @@
 /*   By: lpoisson <lpoisson@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/10/06 12:00:00 by lpoisson          #+#    #+#             */
-/*   Updated: 2026/10/12 13:50:04 by lpoisson         ###   ########.fr       */
+/*   Updated: 2026/10/12 19:19:02 by lpoisson         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -17,8 +17,8 @@ int	is_higher_priority(t_request *a, t_request *b, int policy)
 	if (policy == SCHED_FIFO)
 	{
 		if (a->request_time != b->request_time)
-			return (a->request_time > b->request_time);
-		return (a->seq > b->seq);
+			return (a->request_time < b->request_time);
+		return (a->seq < b->seq);
 	}
 	if (a->deadline != b->deadline)
 		return (a->deadline < b->deadline);
@@ -47,14 +47,6 @@ void	pqueue_destroy(t_pqueue *pq)
 	}
 	pq->size = 0;
 	pq->capacity = 0;
-}
-
-int	pqueue_peek(t_pqueue *pq, t_request *out)
-{
-	if (pq->size == 0)
-		return (1);
-	*out = pq->data[0];
-	return (0);
 }
 
 int	pqueue_push(t_pqueue *pq, t_request req)
